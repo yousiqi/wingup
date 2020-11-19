@@ -26,6 +26,7 @@
 #include "xmlTools.h"
 #define CURL_STATICLIB
 #include "../curl/include/curl/curl.h"
+#include "winmain.h"
 
 using namespace std;
 
@@ -37,9 +38,17 @@ static bool stopDL = false;
 static string msgBoxTitle = "";
 static string abortOrNot = "";
 static string proxySrv = "0.0.0.0";
-static long proxyPort  = 0;
+static long proxyPort = 0;
 static string winGupUserAgent = "WinGup/";
 static string dlFileName = "";
+
+
+// 经常动态变化的参数
+static bool isSilentMode = false;
+static bool forceUpdate = false;
+static HWND hApp;
+static string updateAvailable;
+static bool isModal = false;
 
 const char FLAG_OPTIONS[] = "-options";
 const char FLAG_VERBOSE[] = "-verbose";
@@ -73,7 +82,7 @@ static bool isInList(const char *token2Find, char *list2Clean) {
 	char word[1024];
 	bool isFileNamePart = false;
 
-	for (int i = 0, j = 0 ;  i <= int(strlen(list2Clean)) ; i++)
+	for (int i = 0, j = 0; i <= int(strlen(list2Clean)); i++)
 	{
 		if ((list2Clean[i] == ' ') || (list2Clean[i] == '\0'))
 		{
@@ -88,11 +97,11 @@ static bool isInList(const char *token2Find, char *list2Clean) {
 					int wordLen = int(strlen(word));
 					int prevPos = i - wordLen;
 
-					for (i = i + 1 ;  i <= int(strlen(list2Clean)) ; i++, prevPos++)
+					for (i = i + 1; i <= int(strlen(list2Clean)); i++, prevPos++)
 						list2Clean[prevPos] = list2Clean[i];
 
 					list2Clean[prevPos] = '\0';
-					
+
 					return true;
 				}
 			}
@@ -117,7 +126,7 @@ static string getParamVal(char c, char *list2Clean) {
 	bool isFileNamePart = false;
 	int pos2Erase = 0;
 
-	for (int i = 0, j = 0 ;  i <= int(strlen(list2Clean)) ; i++)
+	for (int i = 0, j = 0; i <= int(strlen(list2Clean)); i++)
 	{
 		if ((list2Clean[i] == ' ') || (list2Clean[i] == '\0'))
 		{
@@ -127,9 +136,9 @@ static string getParamVal(char c, char *list2Clean) {
 				j = 0;
 				action = false;
 
-				for (i = i + 1 ;  i <= int(strlen(list2Clean)) ; i++, pos2Erase++)
+				for (i = i + 1; i <= int(strlen(list2Clean)); i++, pos2Erase++)
 					list2Clean[pos2Erase] = list2Clean[i];
-						
+
 				list2Clean[pos2Erase] = '\0';
 
 				return word;
@@ -145,13 +154,13 @@ static string getParamVal(char c, char *list2Clean) {
 		{
 			if (action)
 			{
-				word[j++] =  list2Clean[i];
+				word[j++] = list2Clean[i];
 			}
 			else if (checkDash)
 			{
 				if (list2Clean[i] == '-')
 					checkCh = true;
-			            
+
 				if (list2Clean[i] != ' ')
 					checkDash = false;
 			}
@@ -160,7 +169,7 @@ static string getParamVal(char c, char *list2Clean) {
 				if (list2Clean[i] == c)
 				{
 					action = true;
-					pos2Erase = i-1;
+					pos2Erase = i - 1;
 				}
 				checkCh = false;
 			}
@@ -171,17 +180,17 @@ static string getParamVal(char c, char *list2Clean) {
 
 static void goToScreenCenter(HWND hwnd)
 {
-    RECT screenRc;
+	RECT screenRc;
 	::SystemParametersInfo(SPI_GETWORKAREA, 0, &screenRc, 0);
 
-    POINT center;
+	POINT center;
 	center.x = screenRc.left + (screenRc.right - screenRc.left) / 2;
-    center.y = screenRc.top + (screenRc.bottom - screenRc.top)/2;
+	center.y = screenRc.top + (screenRc.bottom - screenRc.top) / 2;
 
 	RECT rc;
 	::GetWindowRect(hwnd, &rc);
-	int x = center.x - (rc.right - rc.left)/2;
-	int y = center.y - (rc.bottom - rc.top)/2;
+	int x = center.x - (rc.right - rc.left) / 2;
+	int y = center.y - (rc.bottom - rc.top) / 2;
 
 	::SetWindowPos(hwnd, HWND_TOP, x, y, rc.right - rc.left, rc.bottom - rc.top, SWP_SHOWWINDOW);
 };
@@ -192,7 +201,7 @@ static size_t getUpdateInfoCallback(char *data, size_t size, size_t nmemb, std::
 {
 	// What we will return
 	size_t len = size * nmemb;
-	
+
 	// Is there anything in the buffer?
 	if (updateInfo != NULL)
 	{
@@ -231,46 +240,53 @@ static size_t setProgress(HWND, double t, double d, double, double)
 	return 0;
 };
 
-LRESULT CALLBACK progressBarDlgProc(HWND hWndDlg, UINT Msg, WPARAM wParam, LPARAM )
+LRESULT CALLBACK progressBarDlgProc(HWND hWndDlg, UINT Msg, WPARAM wParam, LPARAM)
 {
+
 	INITCOMMONCONTROLSEX InitCtrlEx;
 
 	InitCtrlEx.dwSize = sizeof(INITCOMMONCONTROLSEX);
-	InitCtrlEx.dwICC  = ICC_PROGRESS_CLASS;
+	InitCtrlEx.dwICC = ICC_PROGRESS_CLASS;
 	InitCommonControlsEx(&InitCtrlEx);
 
-	switch(Msg)
+	switch (Msg)
 	{
-		case WM_INITDIALOG:
-			hProgressDlg = hWndDlg;
-			hProgressBar = CreateWindowEx(0, PROGRESS_CLASS, NULL, WS_CHILD | WS_VISIBLE,
-										  20, 20, 280, 17,
-										  hWndDlg, NULL, hInst, NULL);
-			SendMessage(hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100)); 
-			SendMessage(hProgressBar, PBM_SETSTEP, 1, 0);
-			goToScreenCenter(hWndDlg);
-			return TRUE; 
+	case WM_INITDIALOG:
+		hProgressDlg = hWndDlg;
+		hProgressBar = CreateWindowEx(0, PROGRESS_CLASS, NULL, WS_CHILD | WS_VISIBLE,
+			20, 20, 280, 17,
+			hWndDlg, NULL, hInst, NULL);
+		SendMessage(hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+		SendMessage(hProgressBar, PBM_SETSTEP, 1, 0);
+		goToScreenCenter(hWndDlg);
+		return TRUE;
 
-		case WM_COMMAND:
-			switch(wParam)
-			{
-			case IDOK:
-				EndDialog(hWndDlg, 0);
-				return TRUE;
-			case IDCANCEL:
-				stopDL = true;
-				if (abortOrNot == "")
-					abortOrNot = MSGID_ABORTORNOT;
-				int abortAnswer = ::MessageBoxA(hWndDlg, abortOrNot.c_str(), msgBoxTitle.c_str(), MB_YESNO);
-				if (abortAnswer == IDYES)
-				{
-					doAbort = true;
-					EndDialog(hWndDlg, 0);
-				}
-				stopDL = false;
+	case WM_COMMAND:
+		switch (wParam)
+		{
+		case IDOK:
+			EndDialog(hWndDlg, 0);
+			return TRUE;
+		case IDCANCEL:
+			// 强制更新不允许cancel
+			if (forceUpdate) {
+				::MessageBoxA(hWndDlg, "此版本为强制更新版本，不允许取消", "取消更新", MB_OK);
 				return TRUE;
 			}
-			break;
+
+			stopDL = true;
+			if (abortOrNot == "")
+				abortOrNot = MSGID_ABORTORNOT;
+			int abortAnswer = ::MessageBoxA(hWndDlg, abortOrNot.c_str(), msgBoxTitle.c_str(), MB_YESNO);
+			if (abortAnswer == IDYES)
+			{
+				doAbort = true;
+				EndDialog(hWndDlg, 0);
+			}
+			stopDL = false;
+			return TRUE;
+		}
+		break;
 	}
 
 	return FALSE;
@@ -281,34 +297,34 @@ LRESULT CALLBACK yesNoNeverDlgProc(HWND hWndDlg, UINT message, WPARAM wParam, LP
 {
 	switch (message)
 	{
-		case WM_INITDIALOG:
-		{
-			if (thirdDoUpdateDlgButtonLabel != "")
-				::SetDlgItemTextA(hWndDlg, IDCANCEL, thirdDoUpdateDlgButtonLabel.c_str());
+	case WM_INITDIALOG:
+	{
+		if (thirdDoUpdateDlgButtonLabel != "")
+			::SetDlgItemTextA(hWndDlg, IDCANCEL, thirdDoUpdateDlgButtonLabel.c_str());
 
-			goToScreenCenter(hWndDlg);
+		goToScreenCenter(hWndDlg);
+		return TRUE;
+	}
+
+	case WM_COMMAND:
+	{
+		switch (wParam)
+		{
+		case IDYES:
+		case IDNO:
+		case IDCANCEL:
+			EndDialog(hWndDlg, wParam);
 			return TRUE;
-		}
 
-		case WM_COMMAND:
-		{
-			switch (wParam)
-			{
-				case IDYES:
-				case IDNO:
-				case IDCANCEL:
-					EndDialog(hWndDlg, wParam);
-					return TRUE;
-
-				default:
-					break;
-			}
+		default:
+			break;
 		}
+	}
 
-		case WM_DESTROY:
-		{
-			return TRUE;
-		}
+	case WM_DESTROY:
+	{
+		return TRUE;
+	}
 	}
 	return FALSE;
 }
@@ -316,31 +332,31 @@ LRESULT CALLBACK yesNoNeverDlgProc(HWND hWndDlg, UINT message, WPARAM wParam, LP
 LRESULT CALLBACK proxyDlgProc(HWND hWndDlg, UINT Msg, WPARAM wParam, LPARAM)
 {
 
-	switch(Msg)
+	switch (Msg)
 	{
-		case WM_INITDIALOG:
-			::SetDlgItemTextA(hWndDlg, IDC_PROXYSERVER_EDIT, proxySrv.c_str());
-			::SetDlgItemInt(hWndDlg, IDC_PORT_EDIT, proxyPort, FALSE);
-			goToScreenCenter(hWndDlg);
-			return TRUE; 
+	case WM_INITDIALOG:
+		::SetDlgItemTextA(hWndDlg, IDC_PROXYSERVER_EDIT, proxySrv.c_str());
+		::SetDlgItemInt(hWndDlg, IDC_PORT_EDIT, proxyPort, FALSE);
+		goToScreenCenter(hWndDlg);
+		return TRUE;
 
-		case WM_COMMAND:
-			switch(wParam)
-			{
-				case IDOK:
-				{
-					char proxyServer[MAX_PATH];
-					::GetDlgItemTextA(hWndDlg, IDC_PROXYSERVER_EDIT, proxyServer, MAX_PATH);
-					proxySrv = proxyServer;
-					proxyPort = ::GetDlgItemInt(hWndDlg, IDC_PORT_EDIT, NULL, FALSE);
-					EndDialog(hWndDlg, 1);
-					return TRUE;
-				}
-				case IDCANCEL:
-					EndDialog(hWndDlg, 0);
-					return TRUE;
-			}
-			break;
+	case WM_COMMAND:
+		switch (wParam)
+		{
+		case IDOK:
+		{
+			char proxyServer[MAX_PATH];
+			::GetDlgItemTextA(hWndDlg, IDC_PROXYSERVER_EDIT, proxyServer, MAX_PATH);
+			proxySrv = proxyServer;
+			proxyPort = ::GetDlgItemInt(hWndDlg, IDC_PORT_EDIT, NULL, FALSE);
+			EndDialog(hWndDlg, 1);
+			return TRUE;
+		}
+		case IDCANCEL:
+			EndDialog(hWndDlg, 0);
+			return TRUE;
+		}
+		break;
 	}
 
 	return FALSE;
@@ -348,7 +364,8 @@ LRESULT CALLBACK proxyDlgProc(HWND hWndDlg, UINT Msg, WPARAM wParam, LPARAM)
 
 static DWORD WINAPI launchProgressBar(void *)
 {
-	::DialogBox(hInst, MAKEINTRESOURCE(IDD_PROGRESS_DLG), NULL, reinterpret_cast<DLGPROC>(progressBarDlgProc));
+	// 进度条窗口，其中progressBarDlgProc是回调函数
+	::DialogBox(hInst, MAKEINTRESOURCE(IDD_PROGRESS_DLG), hApp, reinterpret_cast<DLGPROC>(progressBarDlgProc));
 	return 0;
 }
 
@@ -389,11 +406,14 @@ bool downloadBinary(string urlFrom, string destTo, pair<string, int> proxyServer
 
 	if (res != CURLE_OK)
 	{
+		// 非静默模式且没有中断
 		if (!isSilentMode && doAbort == false)
-			::MessageBoxA(NULL, errorBuffer, "curl error", MB_OK);
+			::MessageBoxA(isModal ? hApp : NULL, errorBuffer, "curl error", MB_OK);
+
 		if (doAbort)
 		{
-			::MessageBoxA(NULL, stoppedMessage.first.c_str(), stoppedMessage.second.c_str(), MB_OK);
+			// 不需要提示
+			// ::MessageBoxA(NULL, stoppedMessage.first.c_str(), stoppedMessage.second.c_str(), MB_OK);
 		}
 		doAbort = false;
 		return false;
@@ -405,7 +425,7 @@ bool downloadBinary(string urlFrom, string destTo, pair<string, int> proxyServer
 	return true;
 }
 
-bool getUpdateInfo(string &info2get, const GupParameters& gupParams, const GupExtraOptions& proxyServer, const string& customParam, const string& version)
+bool getUpdateInfo(string &info2get, const GupParameters& gupParams, const GupExtraOptions& proxyServer, const string& customParam, const string& version, bool slientMode)
 {
 	char errorBuffer[CURL_ERROR_SIZE] = { 0 };
 
@@ -476,27 +496,30 @@ bool getUpdateInfo(string &info2get, const GupParameters& gupParams, const GupEx
 
 	if (res != CURLE_OK)
 	{
-		if (!gupParams.isSilentMode())
-			::MessageBoxA(NULL, errorBuffer, "curl error", MB_OK);
+		if (!slientMode)
+			::MessageBoxA(isModal ? hApp : NULL, errorBuffer, "curl error", MB_OK);
 		return false;
 	}
 	return true;
 }
 
+// 执行安装
 bool runInstaller(const string& app2runPath, const string& binWindowsClassName, const string& closeMsg, const string& closeMsgTitle)
 {
-
+	// 软加运行中则kill
 	if (!binWindowsClassName.empty())
 	{
-		HWND h = ::FindWindowExA(NULL, NULL, binWindowsClassName.c_str(), NULL);
-
+		HWND h = ::FindWindow(NULL, binWindowsClassName.c_str());
 		if (h)
 		{
-			int installAnswer = ::MessageBoxA(NULL, closeMsg.c_str(), closeMsgTitle.c_str(), MB_YESNO);
+			// 强制更新则不提示
+			if (!forceUpdate) {
+				int installAnswer = ::MessageBoxA(isModal ? hApp : NULL, closeMsg.c_str(), closeMsgTitle.c_str(), MB_OKCANCEL);
 
-			if (installAnswer == IDNO)
-			{
-				return 0;
+				if (installAnswer == IDNO)
+				{
+					return 0;
+				}
 			}
 		}
 
@@ -504,7 +527,7 @@ bool runInstaller(const string& app2runPath, const string& binWindowsClassName, 
 		while (h)
 		{
 			::SendMessage(h, WM_CLOSE, 0, 0);
-			h = ::FindWindowExA(NULL, NULL, binWindowsClassName.c_str(), NULL);
+			h = ::FindWindow(NULL, binWindowsClassName.c_str());
 		}
 	}
 
@@ -519,9 +542,44 @@ bool runInstaller(const string& app2runPath, const string& binWindowsClassName, 
 	return true;
 }
 
+
+// 非强制升级的弹出框
+int UpdateMessageBox(HWND hwnd, const string& szText, const string& szCaption, UINT uType)
+{
+	int ret;
+	HHOOK hHook = SetWindowsHookEx(
+		WH_CBT,
+		CBTHookProcWithUpdate,
+		NULL,
+		GetCurrentThreadId()
+	);
+	ret = MessageBox(hwnd, szText.c_str(), szCaption.c_str(), uType);
+	UnhookWindowsHookEx(hHook);
+	return ret;
+}
+
+// 强制升级的弹出框
+int ForceUpdateMessageBox(HWND hwnd, const string& szText, const string& szCaption, UINT uType)
+{
+	int ret;
+	HHOOK hHook = SetWindowsHookEx(
+		WH_CBT,
+		CBTHookProcWithForceUpdate,
+		NULL,
+		GetCurrentThreadId()
+	);
+	ret = MessageBox(hwnd, szText.c_str(), szCaption.c_str(), uType);
+	UnhookWindowsHookEx(hHook);
+	return ret;
+}
+
+DWORD WINAPI CreateMessageBox(void *) { //threaded so we can still work with it
+	MessageBox(isModal ? hApp : NULL, updateAvailable.c_str(), msgBoxTitle.c_str(), MB_OK);
+	return 0;
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 {
-	bool isSilentMode = false;
 	FILE *pFile = NULL;
 
 	bool launchSettingsDlg = false;
@@ -530,6 +588,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 	string version = "";
 	string customParam = "";
 
+
 	if (lpszCmdLine && lpszCmdLine[0])
 	{
 		launchSettingsDlg = isInList(FLAG_OPTIONS, lpszCmdLine);
@@ -537,19 +596,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		isHelp = isInList(FLAG_HELP, lpszCmdLine);
 		version = getParamVal('v', lpszCmdLine);
 		customParam = getParamVal('p', lpszCmdLine);
+
+		isSilentMode = isInList("-slientMode", lpszCmdLine);
+		forceUpdate = isInList("-forceUpdate", lpszCmdLine);
+
 	}
 
 	if (isHelp)
 	{
-		::MessageBoxA(NULL, MSGID_HELP, "GUP Command Argument Help", MB_OK);
+		::MessageBoxA(isModal ? hApp : NULL, MSGID_HELP, "GUP Command Argument Help", MB_OK);
 		return 0;
 	}
 
 	GupExtraOptions extraOptions("gupOptions.xml");
 	GupNativeLang nativeLang("nativeLang.xml");
 	GupParameters gupParams("gup.xml");
-	
+
 	hInst = hInstance;
+
 	try {
 		if (launchSettingsDlg)
 		{
@@ -566,6 +630,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		msgBoxTitle = gupParams.getMessageBoxTitle();
 		abortOrNot = nativeLang.getMessageString("MSGID_ABORTORNOT");
+		isModal = gupParams.isMessageBoxModal();
+		// 获取需要更新的app
+		hApp = ::FindWindow(NULL, gupParams.getClassName().c_str());
 
 		//
 		// Get update info
@@ -580,26 +647,32 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 		// override silent mode if "-isVerbose" is passed as argument
 		if (isVerbose)
-			gupParams.setSilentMode(false);
+			isSilentMode = false;
 
-		isSilentMode = gupParams.isSilentMode();
+		//isSilentMode = gupParams.isSilentMode();
 
-		bool getUpdateInfoSuccessful = getUpdateInfo(updateInfo, gupParams, extraOptions, customParam, version);
+		bool getUpdateInfoSuccessful = getUpdateInfo(updateInfo, gupParams, extraOptions, customParam, version, isSilentMode);
 
 		if (!getUpdateInfoSuccessful)
 			return -1;
-		
+
+		// dev
+		//if (isModal) {
+		//	MessageBoxA(NULL, "111", "111", MB_OK);
+		//}
 
 		GupDownloadInfo gupDlInfo(updateInfo.c_str());
 
 		if (!gupDlInfo.doesNeed2BeUpdated())
 		{
+			// 非静默更新则给出已是最新版本提示
 			if (!isSilentMode)
 			{
 				string noUpdate = nativeLang.getMessageString("MSGID_NOUPDATE");
-				if (noUpdate == "")
+				if (noUpdate == ""){
 					noUpdate = MSGID_NOUPDATE;
-				::MessageBoxA(NULL, noUpdate.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_OK);
+				}
+				::MessageBoxA(isModal ? hApp : NULL, noUpdate.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_OK);
 			}
 			return 0;
 		}
@@ -610,27 +683,54 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		//
 
 		// Ask user if he/she want to do update
-		string updateAvailable = nativeLang.getMessageString("MSGID_UPDATEAVAILABLE");
+		updateAvailable = nativeLang.getMessageString("MSGID_UPDATEAVAILABLE");
 		if (updateAvailable == "")
 			updateAvailable = MSGID_UPDATEAVAILABLE;
-		
+
 		int thirdButtonCmd = gupParams.get3rdButtonCmd();
 		thirdDoUpdateDlgButtonLabel = gupParams.get3rdButtonLabel();
 
 		int dlAnswer = 0;
-		HWND hApp = ::FindWindowExA(NULL, NULL, gupParams.getClassName().c_str(), NULL);
-		bool isModal = gupParams.isMessageBoxModal();
 
-		if (!thirdButtonCmd)
-			dlAnswer = ::MessageBoxA(isModal ? hApp : NULL, updateAvailable.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_YESNO);
-		else
+		if (!thirdButtonCmd) {
+
+			// 是否强制更新
+			if (forceUpdate) {
+
+				HANDLE thread = CreateThread(nullptr, 0, CreateMessageBox, nullptr, 0, nullptr);
+
+				HWND msg;
+				// 查找window
+				while (!(msg = FindWindow(nullptr, msgBoxTitle.c_str())));
+
+				// 获取当前样式
+				LONG_PTR style = GetWindowLongPtr(msg, GWL_STYLE); 
+				// 移除系统菜单
+				SetWindowLongPtr(msg, GWL_STYLE, style & ~WS_SYSMENU); 
+
+				// 等待窗口关闭
+				WaitForSingleObject(thread, INFINITE); 
+		
+				// 去除关闭按钮
+				//HWND updateDialogHandle = ::FindWindow(NULL, "小锐云桥版本更新");
+				//int style = GetWindowLong(updateDialogHandle, GWL_STYLE);
+				//SetWindowLong(updateDialogHandle, GWL_STYLE, (style & ~WS_CAPTION));
+			}
+			else {
+				// 弹出 模态/独立 窗口
+				dlAnswer = ::MessageBoxA(isModal ? hApp : NULL, updateAvailable.c_str(), gupParams.getMessageBoxTitle().c_str(), MB_OKCANCEL);
+			}
+		}
+		else{
 			dlAnswer = static_cast<int32_t>(::DialogBox(hInst, MAKEINTRESOURCE(IDD_YESNONEVERDLG), isModal ? hApp : NULL, reinterpret_cast<DLGPROC>(yesNoNeverDlgProc)));
+		}
 
-		if (dlAnswer == IDNO)
+		// 点击否
+		if (dlAnswer == IDNO || dlAnswer == IDCLOSE)
 		{
 			return 0;
 		}
-		
+		// 点击取消
 		if (dlAnswer == IDCANCEL)
 		{
 			if (gupParams.getClassName() != "")
@@ -644,17 +744,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 		}
 
 		//
-		// Download executable bin
+		// 下载更新包
 		//
 		::CreateThread(NULL, 0, launchProgressBar, NULL, 0, NULL);
-		
+
+
+		//HWND childHwnd = FindWindowEx(hProgressDlg, NULL, "Button", "Cancel");
+		// 获取当前样式
+		//LONG_PTR style = GetWindowLongPtr(childHwnd, GWL_STYLE);
+		// 移除系统菜单
+		//SetWindowLongPtr(childHwnd, GWL_STYLE, style & ~WS_DISABLED);
+
+
 		std::string dlDest = std::getenv("TEMP");
 		dlDest += "\\";
 		dlDest += ::PathFindFileNameA(gupDlInfo.getDownloadLocation().c_str());
 
-        char *ext = ::PathFindExtensionA(gupDlInfo.getDownloadLocation().c_str());
-        if (strcmp(ext, ".exe") != 0)
-            dlDest += ".exe";
+		char *ext = ::PathFindExtensionA(gupDlInfo.getDownloadLocation().c_str());
+		if (strcmp(ext, ".exe") != 0)
+			dlDest += ".exe";
 
 		dlFileName = ::PathFindFileNameA(gupDlInfo.getDownloadLocation().c_str());
 
@@ -670,7 +778,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 
 
 		//
-		// Run executable bin
+		// 关闭正在运行软件提示消息
 		//
 		string msg = gupParams.getClassName();
 		string closeApp = nativeLang.getMessageString("MSGID_CLOSEAPP");
@@ -678,13 +786,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 			closeApp = MSGID_CLOSEAPP;
 		msg += closeApp;
 
+		// 执行安装
 		runInstaller(dlDest, gupParams.getClassName(), msg, gupParams.getMessageBoxTitle().c_str());
 
 		return 0;
 
-	} catch (exception ex) {
+	}
+	catch (exception ex) {
 		if (!isSilentMode)
-			::MessageBoxA(NULL, ex.what(), "Xml Exception", MB_OK);
+			::MessageBoxA(isModal ? hApp : NULL, ex.what(), "Xml Exception", MB_OK);
 
 		if (pFile != NULL)
 			fclose(pFile);
@@ -694,7 +804,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpszCmdLine, int)
 	catch (...)
 	{
 		if (!isSilentMode)
-			::MessageBoxA(NULL, "Unknown", "Unknown Exception", MB_OK);
+			::MessageBoxA(isModal ? hApp : NULL, "Unknown", "Unknown Exception", MB_OK);
 
 		if (pFile != NULL)
 			fclose(pFile);

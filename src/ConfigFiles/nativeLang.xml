@@ -20,12 +20,12 @@
 
 <!-- This file is optional.-->
 
-<GUP_NativeLangue name = "English">
+<GUP_NativeLangue name = "Chinese">
 	<PopupMessages>
-		<MSGID_NOUPDATE>No update is available.</MSGID_NOUPDATE>
-		<MSGID_UPDATEAVAILABLE>An update package is available, do you want to download it?</MSGID_UPDATEAVAILABLE>
-		<MSGID_DOWNLOADSTOPPED>Download is stopped by user. Update is aborted.</MSGID_DOWNLOADSTOPPED>
-		<MSGID_CLOSEAPP> is opened.\rUpdater will close it in order to process the installation.\rContinue?</MSGID_CLOSEAPP>
-		<MSGID_ABORTORNOT>Do you want to abort update download?</MSGID_ABORTORNOT>
+		<MSGID_NOUPDATE>已经是最新版，不需要更新。</MSGID_NOUPDATE>
+		<MSGID_UPDATEAVAILABLE>小锐云桥发现新版本，点击确定立即更新</MSGID_UPDATEAVAILABLE>
+		<MSGID_DOWNLOADSTOPPED>下载被用户取消。</MSGID_DOWNLOADSTOPPED>
+		<MSGID_CLOSEAPP>升级程序检测到【小锐云桥】正在运行。 点击【确定】强制关闭小锐云桥，继续升级。 点击“取消”取消升级</MSGID_CLOSEAPP>
+		<MSGID_ABORTORNOT>确定要停止下载更新包?</MSGID_ABORTORNOT>
 	</PopupMessages>
 </GUP_NativeLangue>

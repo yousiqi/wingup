@@ -44,13 +44,23 @@ public:
 	const std::string & get3rdButtonLabel() const { return _3rdButton_label; };
 
 	void setCurrentVersion(const char *currentVersion) {_currentVersion = currentVersion;};
-	bool setSilentMode(bool mode) {
-		bool oldMode = _isSilentMode;
-		_isSilentMode = mode;
-		return oldMode;
-	};
-	bool isSilentMode() const {return _isSilentMode;};
+
+
 	bool isMessageBoxModal() const { return _isMessageBoxModal; };
+
+	//bool setsilentmode(bool mode) {
+	//	bool oldmode = _issilentmode;
+	//	_issilentmode = mode;
+	//	return oldmode;
+	//};
+	//bool issilentmode() const {return _issilentmode;};
+	//bool setforceupdate(bool force) {
+	//	bool oldforce = _isforceupdate;
+	//	_isforceupdate = force;
+	//	return oldforce;
+	//};
+	//bool isforceupdate() const { return _isforceupdate; };
+	
 
 private:
 	std::string _currentVersion;
@@ -64,7 +74,10 @@ private:
 	int _3rdButton_wParam = 0;
 	int _3rdButton_lParam = 0;
 	std::string _3rdButton_label;
-	bool _isSilentMode = true;
+	//// 静默更新，没有提示框
+	//bool _isSilentMode = true;
+	//// 强制更新
+	//bool _isForceUpdate = true;
 };
 
 class GupExtraOptions : public XMLTool {

@@ -137,7 +137,7 @@ GupParameters::GupParameters(const char * xmlFileName)
 		}
 	}
 
-	TiXmlNode *silentModeNode = root->FirstChildElement("SilentMode");
+	/*TiXmlNode *silentModeNode = root->FirstChildElement("SilentMode");
 	if (silentModeNode)
 	{
 		TiXmlNode *smn = silentModeNode->FirstChild();
@@ -156,6 +156,24 @@ GupParameters::GupParameters(const char * xmlFileName)
 		}
 	}
 
+	TiXmlNode *forceUpdateNode = root->FirstChildElement("ForceUpdate");
+	if (forceUpdateNode)
+	{
+		TiXmlNode *smn = forceUpdateNode->FirstChild();
+		if (smn)
+		{
+			const char *smnVal = smn->Value();
+			if (smnVal && *smnVal)
+			{
+				if (stricmp(smnVal, "yes") == 0)
+					_isForceUpdate = true;
+				else if (stricmp(smnVal, "no") == 0)
+					_isForceUpdate = false;
+				else
+					throw exception("ForceUpdate value is incorrect (only \"yes\" or \"no\" is allowed).");
+			}
+		}
+	}*/
 	
 	//
 	// Get optional parameters
